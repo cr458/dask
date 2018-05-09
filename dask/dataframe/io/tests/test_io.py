@@ -529,8 +529,11 @@ def test_from_delayed_misordered_meta():
 
     ddf = dd.from_delayed([delayed(lambda: df)()], meta=misordered_meta)
 
-    assert_eq(ddf, ddf.reset_index(drop=True), check_names=False,
-              check_like=True)
+    with pytest.raises(ValueError) as info:
+        #produces dataframe which does not match meta
+        ddf.reset_index().compute()
+    msg = 'Meta columns do not match dataframe.'
+    assert msg in str(info.value)
 
 
 def test_from_delayed_sorted():

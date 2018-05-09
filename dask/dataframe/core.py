@@ -3519,7 +3519,14 @@ def apply_and_enforce(func, args, kwargs, meta):
     if isinstance(df, (pd.DataFrame, pd.Series, pd.Index)):
         if len(df) == 0:
             return meta
-        c = meta.columns if isinstance(df, pd.DataFrame) else meta.name
+
+        if isinstance(df, pd.DataFrame):
+            if not np.array_equal(meta.columns, df.columns):
+                raise ValueError('Meta columns do not match dataframe.')
+            else:
+                c = meta.columns
+        else:
+            c = meta.name
         return _rename(c, df)
     return df
 
@@ -3556,7 +3563,8 @@ def _rename(columns, df):
             # if target is identical, rename is not necessary
             return df
         # deep=False doesn't doesn't copy any data/indices, so this is cheap
-        df = df[columns].copy(deep=False)
+        df = df.copy(deep=False)
+        df.columns = columns
         return df
     elif isinstance(df, (pd.Series, pd.Index)):
         if isinstance(columns, (pd.Series, pd.Index)):
