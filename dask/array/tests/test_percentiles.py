@@ -12,11 +12,28 @@ def test_percentile():
     assert_eq(da.percentile(d, [0, 50, 100]),
               np.array([1, 1, 1], dtype=d.dtype))
 
-    x = np.array([0, 0, 5, 5, 5, 5, 20, 20])
-    d = da.from_array(x, chunks=(3,))
+    x = np.array([[0, 0, 5, 5, 5, 5, 20, 20],
+                  [0, 0, 5, 5, 5, 5, 20, 20]])
+    d = da.from_array(x, chunks=(3,2))
     result = da.percentile(d, [0, 50, 100])
-    assert_eq(da.percentile(d, [0, 50, 100]),
+    test_axis = da.percentile(d, [0, 50, 100], axis=0)
+    test_other_axis = da.percentile(d, [0, 50, 100], axis=1)
+
+    assert_eq(result,
               np.array([0, 5, 20], dtype=result.dtype))
+
+    assert_eq(test_axis,
+              np.array([[0., 0., 5., 5., 5., 5., 20., 20.],
+                        [0., 0., 5., 5., 5., 5., 20., 20.],
+                        [0., 0., 5., 5., 5., 5., 20., 20.]]),
+              dtype=result.dtype)
+
+    assert_eq(test_other_axis,
+              np.array([[0., 0.],
+                        [5., 5.],
+                        [20., 20.]]),
+              dtype=result.dtype)
+
     assert same_keys(da.percentile(d, [0, 50, 100]),
                      da.percentile(d, [0, 50, 100]))
     assert not same_keys(da.percentile(d, [0, 50, 100]),
