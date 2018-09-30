@@ -1,6 +1,5 @@
 from __future__ import absolute_import, division, print_function
 
-from collections import Sequence
 from functools import partial, wraps
 from itertools import product
 from operator import add
@@ -11,7 +10,7 @@ from toolz import accumulate, sliding_window
 
 from .. import sharedict
 from ..base import tokenize
-from ..utils import ignoring
+from ..compatibility import Sequence
 from . import chunk
 from .core import (Array, asarray, normalize_chunks,
                    stack, concatenate, block,
@@ -57,7 +56,8 @@ def empty_like(a, dtype=None, chunks=None):
 
     a = asarray(a)
     return empty(
-        a.shape, dtype=(dtype or a.dtype), chunks=(chunks or a.chunks)
+        a.shape, dtype=(dtype or a.dtype),
+        chunks=(chunks if chunks is not None else a.chunks)
     )
 
 
@@ -92,7 +92,8 @@ def ones_like(a, dtype=None, chunks=None):
 
     a = asarray(a)
     return ones(
-        a.shape, dtype=(dtype or a.dtype), chunks=(chunks or a.chunks)
+        a.shape, dtype=(dtype or a.dtype),
+        chunks=(chunks if chunks is not None else a.chunks)
     )
 
 
@@ -127,7 +128,8 @@ def zeros_like(a, dtype=None, chunks=None):
 
     a = asarray(a)
     return zeros(
-        a.shape, dtype=(dtype or a.dtype), chunks=(chunks or a.chunks)
+        a.shape, dtype=(dtype or a.dtype),
+        chunks=(chunks if chunks is not None else a.chunks)
     )
 
 
@@ -169,7 +171,7 @@ def full_like(a, fill_value, dtype=None, chunks=None):
         a.shape,
         fill_value,
         dtype=(dtype or a.dtype),
-        chunks=(chunks or a.chunks)
+        chunks=(chunks if chunks is not None else a.chunks)
     )
 
 
@@ -439,7 +441,7 @@ def eye(N, chunks, M=None, k=0, dtype=float):
       An array where all elements are equal to zero, except for the `k`-th
       diagonal, whose values are equal to one.
     """
-    if not isinstance(chunks, int):
+    if not isinstance(chunks, Integral):
         raise ValueError('chunks must be an int')
 
     token = tokenize(N, chunk, M, k, dtype)
@@ -601,37 +603,26 @@ def tril(m, k=0):
     return Array(dsk, name, shape=m.shape, chunks=m.chunks, dtype=m.dtype)
 
 
-def offset_func(func, offset, *args):
-    """  Offsets inputs by offset
-
-    >>> double = lambda x: x * 2
-    >>> f = offset_func(double, (10,))
-    >>> f(1)
-    22
-    >>> f(300)
-    620
-    """
-    def _offset(*args):
+def _np_fromfunction(func, shape, dtype, offset, func_kwargs):
+    def offset_func(*args, **kwargs):
         args2 = list(map(add, args, offset))
-        return func(*args2)
+        return func(*args2, **kwargs)
 
-    with ignoring(Exception):
-        _offset.__name__ = 'offset_' + func.__name__
-
-    return _offset
+    return np.fromfunction(offset_func, shape, dtype=dtype, **func_kwargs)
 
 
 @wraps(np.fromfunction)
-def fromfunction(func, chunks=None, shape=None, dtype=None):
+def fromfunction(func, chunks=None, shape=None, dtype=None, **kwargs):
     if chunks:
         chunks = normalize_chunks(chunks, shape)
-    name = 'fromfunction-' + tokenize(func, chunks, shape, dtype)
+    name = 'fromfunction-' + tokenize(func, chunks, shape, dtype, kwargs)
     keys = list(product([name], *[range(len(bd)) for bd in chunks]))
     aggdims = [list(accumulate(add, (0,) + bd[:-1])) for bd in chunks]
     offsets = list(product(*aggdims))
     shapes = list(product(*chunks))
+    dtype = dtype or float
 
-    values = [(np.fromfunction, offset_func(func, offset), shp)
+    values = [(_np_fromfunction, func, shp, dtype, offset, kwargs)
               for offset, shp in zip(offsets, shapes)]
 
     dsk = dict(zip(keys, values))
@@ -940,7 +931,7 @@ def pad_udf(array, pad_width, mode, **kwargs):
 
         result = result.map_blocks(
             wrapped_pad_func,
-            token="pad",
+            name="pad",
             dtype=result.dtype,
             pad_func=mode,
             iaxis_pad_width=pad_width[d],
